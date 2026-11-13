@@ -44,12 +44,86 @@
   .eq .d { grid-column: 1 / -1; font-size: 12px; color: #7d869b; }
   .check { }
   .ok { color: #7ee2a8 !important; } .bad { color: #ff8a8a !important; } .na { color: #aab3c7 !important; }
+  .info h2, .eqcol h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #8b94a8; margin: 0 0 8px; font-weight: 600; }
+  .info { margin-top: 16px; }
+  .info .lead { margin: 0 0 10px; color: #b8c1d6; }
+  .modes { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 12px; }
+  .modes label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 6px 10px; border: 1px solid #1b2030; border-radius: 8px; cursor: pointer; color: #cfd6e4; }
+  .modes label:has(input:checked) { border-color: #3a5ea8; background: #101a30; }
+  .igrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .igrid { grid-template-columns: 1fr; } }
+  .igrid canvas { width: 100%; aspect-ratio: 1 / 1; display: block; background: #05070d; border: 1px solid #161b2a; border-radius: 8px; }
+  .cap { font-size: 12px; color: #7d869b; margin-top: 4px; }
+  .cap i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin: 0 4px 0 8px; border-radius: 2px; }
+  .msgrow { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; align-items: flex-start; }
+  .msgrow canvas { width: 360px; max-width: 100%; aspect-ratio: 2 / 1; background: #05070d; border: 1px solid #161b2a; border-radius: 8px; }
+  .msgctl { flex: 1 1 240px; }
+  .msgctl .stats { margin-bottom: 8px; }
+  button:disabled { opacity: .45; cursor: default; }
+  details { margin-top: 12px; color: #aab3c7; }
+  details summary { cursor: pointer; color: #cfd6e4; }
+  details ol { margin: 8px 0 0; padding-left: 20px; } details li { margin-bottom: 6px; }
+  details .warn { color: #e9c98a; }
+  .cy { color: #67e3ff; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="stage">
     <canvas id="view" width="900" height="900" aria-label="Black hole evaporation simulation"></canvas>
+
+    <div class="panel info" id="info">
+      <h2>The information paradox and Susskind's "World as a Hologram"</h2>
+      <p class="lead">
+        Hawking's calculation says the radiation is purely thermal. If so, once the hole is gone,
+        whatever fell in is gone too: a pure state has become mixed. Send a message in and compare the two answers.
+      </p>
+      <div class="modes" role="radiogroup" aria-label="Which theory to simulate">
+        <label><input type="radio" name="imode" value="hawking"> Hawking 1975: the information is destroyed</label>
+        <label><input type="radio" name="imode" value="holographic" checked> Holographic (’t Hooft, Susskind): the information is preserved</label>
+      </div>
+
+      <div class="igrid">
+        <div>
+          <canvas id="screen" width="440" height="440" aria-label="Horizon screen"></canvas>
+          <div class="cap">Horizon screen: one pixel per bit, <span class="cy">cyan</span> = your message.</div>
+        </div>
+        <div>
+          <canvas id="page" width="440" height="440" aria-label="Entropy curves"></canvas>
+          <div class="cap">
+            <i style="background:#6ea8ff"></i>hole (S = A/4G)
+            <i style="background:#ff7a6a"></i>radiation, Hawking
+            <i style="background:#6ee7a0"></i>radiation, Page
+          </div>
+        </div>
+      </div>
+
+      <div class="msgrow">
+        <canvas id="msg" width="600" height="300" aria-label="Message sent and received"></canvas>
+        <div class="msgctl">
+          <dl class="stats">
+            <dt>Bits on the horizon</dt><dd id="i-bits">160 / 160</dd>
+            <dt>Message</dt><dd id="i-state">not sent</dd>
+            <dt>Spread over horizon</dt><dd id="i-spread">–</dd>
+            <dt id="i-back-l">Back in radiation</dt><dd id="i-back">–</dd>
+          </dl>
+          <div class="row" style="margin-top:0"><button id="send">Send message into the hole</button></div>
+          <label>Read an arc of the horizon <span id="v-arc">25%</span></label>
+          <input id="arc" type="range" min="5" max="100" step="5" value="25">
+          <div class="cap" id="i-arc">Readable from this arc alone: –</div>
+        </div>
+      </div>
+
+      <details open>
+        <summary>What the paper proposes (and what this does and doesn't show)</summary>
+        <ol>
+          <li><b>Capacity.</b> A region holds at most one bit per Planck area of its boundary, S = A/4G (eq. 1.3). The screen above loses pixels as the horizon shrinks.</li>
+          <li><b>Spreading.</b> Whatever falls in spreads over the whole stretched horizon at the speed of causality, in about 4MG ln(M²G²) (eqs. 4.10, 4.15), far less than the evaporation time. The orange arc is that growing region. Afterwards a small patch looks thermal and tells you nothing (§6, citing Page): try the arc slider.</li>
+          <li><b>Unitarity.</b> Seen from outside, forming and evaporating the hole is an ordinary unitary process (§7). By Page's counting the radiation entropy must turn over at the Page time instead of rising forever, and from then on the radiation carries the message out (the cyan quanta in the main view).</li>
+          <li class="warn"><b>Limits.</b> The paper is a proposal: it concedes (§7) that this outside description cannot say what a freely falling observer sees. Nothing here derives unitarity; the simulation keeps the books assuming it, using Page's counting and the paper's spreading law.</li>
+        </ol>
+      </details>
+    </div>
   </div>
 
   <div class="side">
@@ -101,6 +175,7 @@
 
   <div class="eqcol">
     <div class="panel"><h2>Equations in use (live)</h2><div id="eq-sim"></div></div>
+    <div class="panel"><h2>From Susskind (1994), live</h2><div id="eq-paper"></div></div>
     <div class="panel"><h2>Check against the exact solution</h2><div id="eq-check"></div></div>
     <div class="panel"><h2>Real-world formulas (SI, 4D), for reference</h2>
       <div class="eq"><span class="f">T<sub>H</sub> = ħc³ / (8π G M k<sub>B</sub>)</span><span class="v"></span><span class="d">Hawking temperature. Cooler for heavier holes; about 6×10⁻⁸ K for the Sun's mass.</span></div>

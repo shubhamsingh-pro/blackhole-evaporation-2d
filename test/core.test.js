@@ -114,3 +114,129 @@ test('regression: many lifetimes and seeds all terminate', () => {
     }
   }
 });
+
+// ---- Information layer (Susskind 1994 / Page 1993) ----------------------------------
+
+const MSG = Array.from({ length: 36 }, (_, i) => (i * 7 + 3) % 5 < 2 ? 1 : 0);
+
+test('horizon bit capacity follows the area law S = A/4G (bits ~ m^2)', () => {
+  const sim = new BlackHoleSim({ lifetime: 60, emitRate: 0, bitsAtStart: 160 });
+  assert.equal(sim.bitsCapacity, 160);
+  for (let i = 0; i < 30 * 60; i++) sim.step(1 / 60);
+  assert.ok(Math.abs(sim.bitsCapacity - 160 * sim.m * sim.m) < 1e-9);
+  assert.ok(sim.bitsCapacity < 160);
+});
+
+test('Page time: radiation entropy equals hole entropy at t = tau (1 - (4/7)^1.5)', () => {
+  const sim = new BlackHoleSim({ lifetime: 90, emitRate: 0 });
+  const m = sim.massAt(sim.pageTime);
+  sim.m = m; // evaluate the entropy formulas at the analytic Page-time mass
+  assert.ok(Math.abs(sim.hawkingRadEntropy - sim.bitsCapacity) < 1e-9);
+  assert.ok(Math.abs(sim.pageTime / 90 - 0.5681) < 1e-3);
+});
+
+test('Page curve is the Hawking curve before the Page time and the hole entropy after', () => {
+  const sim = new BlackHoleSim({ lifetime: 90, emitRate: 0 });
+  sim.m = sim.massAt(0.3 * 90);
+  assert.equal(sim.pageEntropy, sim.hawkingRadEntropy);
+  sim.m = sim.massAt(0.8 * 90);
+  assert.equal(sim.pageEntropy, sim.bitsCapacity);
+  // Hawking's curve ends above the entropy the hole started with: the "information loss"
+  sim.m = 0;
+  assert.ok(sim.hawkingRadEntropy > sim.N0);
+  assert.equal(sim.pageEntropy, 0);
+});
+
+test('message covers the horizon after t_h ln N, eq. (4.10), and not before', () => {
+  const sim = new BlackHoleSim({ lifetime: 1e9, emitRate: 0 }); // static mass
+  sim.sendMessage(MSG);
+  const expected = sim.horizonTimeScale * Math.log(sim.bitsCapacity); // 4MG ln(N)
+  let t = 0;
+  while (sim.messageSpread < 1 && t < 60) { sim.step(1 / 120); t += 1 / 120; }
+  assert.ok(Math.abs(t - expected) / expected < 0.02, `covered at ${t}, expected ${expected}`);
+  assert.ok(t < sim.lifetime * 1e-6, 'far shorter than the evaporation time');
+});
+
+test('spreading is exponential in time (eq. 4.15: R_perp^2 ~ exp(t/4MG))', () => {
+  const sim = new BlackHoleSim({ lifetime: 1e9, emitRate: 0 });
+  sim.sendMessage(MSG);
+  const f0 = sim.messageFront;
+  sim.step(1);
+  const f1 = sim.messageFront;
+  sim.step(1);
+  const f2 = sim.messageFront;
+  assert.ok(Math.abs(f1 / f0 - f2 / f1) < 1e-6, 'constant growth factor per second');
+  const expectedFactor = Math.exp(1 / (2 * sim.horizonTimeScale));
+  assert.ok(Math.abs(f1 / f0 - expectedFactor) < 1e-6);
+});
+
+test('holographic mode: nothing leaves before the Page time, everything by the end', () => {
+  const sim = new BlackHoleSim({ lifetime: 90, emitRate: 0, seed: 3, infoMode: 'holographic' });
+  sim.sendMessage(MSG);
+  let early = 0, last = 0, beforeBurst = 0;
+  const carriersSeen = new Set();
+  while (!sim.evaporated && sim.t < 200) {
+    sim.step(1 / 60);
+    for (const q of sim.photons) if (q.info) carriersSeen.add(q.idx);
+    if (sim.t < sim.pageTime) early = Math.max(early, sim.message.recovered);
+    assert.ok(sim.message.recovered >= last, 'recovery never goes backwards');
+    last = sim.message.recovered;
+    if (!sim.evaporated) beforeBurst = sim.message.recovered;
+  }
+  assert.equal(beforeBurst, MSG.length, 'the Page-curve rule releases everything before the final burst');
+  assert.equal(early, 0, 'no information before the Page time');
+  assert.ok(sim.evaporated);
+  assert.equal(sim.message.recovered, MSG.length);
+  assert.equal(sim.messageOnHorizon().length, 0);
+  for (const q of sim.photons) if (q.info) carriersSeen.add(q.idx);
+  assert.ok(carriersSeen.size > 0, 'information leaves as tagged quanta');
+});
+
+test('holographic mode: the recovered bits are the bits that were sent', () => {
+  const sim = new BlackHoleSim({ lifetime: 40, emitRate: 0, seed: 9 });
+  sim.sendMessage(MSG);
+  const seen = new Map();
+  while (!sim.evaporated) {
+    sim.step(1 / 60);
+    for (const q of sim.photons) if (q.info) seen.set(q.idx, q.bit);
+  }
+  for (let j = 0; j < MSG.length; j++) assert.equal(seen.get(j), MSG[j], `bit ${j}`);
+});
+
+test('hawking mode: no information ever returns and the message is destroyed', () => {
+  const sim = new BlackHoleSim({ lifetime: 40, emitRate: 0, seed: 3, infoMode: 'hawking' });
+  sim.sendMessage(MSG);
+  let prev = MSG.length;
+  while (!sim.evaporated && sim.t < 100) {
+    sim.step(1 / 60);
+    const n = sim.messageOnHorizon().length;
+    assert.ok(n <= prev, 'bits only disappear');
+    prev = n;
+  }
+  assert.equal(sim.message.recovered, 0);
+  assert.equal(sim.photons.filter(q => q.info).length, 0);
+  assert.equal(sim.messageOnHorizon().length, 0);
+});
+
+test('a message thrown in after the Page time comes out about one scrambling time later', () => {
+  const sim = new BlackHoleSim({ lifetime: 90, emitRate: 0, seed: 4 });
+  while (sim.t < 0.8 * 90) sim.step(1 / 60);
+  sim.sendMessage(MSG);
+  const tSend = sim.t;
+  const tScr = sim.scramblingTime;
+  while (sim.message.recovered < MSG.length && !sim.evaporated) sim.step(1 / 60);
+  const dt = sim.t - tSend;
+  assert.ok(!sim.evaporated, 'recovered before the final burst');
+  assert.ok(dt > 0.5 * tScr && dt < 2 * tScr, `took ${dt}s, scrambling time ${tScr}s`);
+});
+
+test('information layer does not disturb the dust/photon random streams', () => {
+  const run = (send) => {
+    const s = new BlackHoleSim({ seed: 42 });
+    s.addDustRing(40);
+    if (send) s.sendMessage(MSG);
+    for (let i = 0; i < 300; i++) s.step(1 / 60);
+    return JSON.stringify(s.dust.slice(0, 5));
+  };
+  assert.equal(run(false), run(true));
+});

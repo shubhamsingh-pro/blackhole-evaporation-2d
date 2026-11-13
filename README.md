@@ -23,6 +23,8 @@ Or just open `index.html` in a browser. Useful URL parameters:
 |-----------|--------|
 | `?t=60`   | start 60 simulated seconds into the run |
 | `?life=120` | evaporation time τ in seconds (15–240) |
+| `?mode=hawking` or `?mode=holographic` | which theory the information panel simulates |
+| `?send=0` | send the message at t = 0 s (any time in seconds works) |
 
 The right-hand column lists every equation the simulation uses with its live value, and checks the
 simulated mass against the exact solution `m(t) = (m₀³ − 3at)^(1/3)` (the difference should stay
@@ -58,6 +60,38 @@ Each emitted quantum is drawn with a dim "partner" falling into the hole. This i
 pair-creation picture of Hawking radiation; it is a visual aid, and the mass loss itself comes
 from the formula above, not from counting partners.
 
+## The information paradox (Susskind, "The World as a Hologram", 1994)
+
+Hawking's calculation says the radiation is exactly thermal, so when a hole evaporates whatever
+fell in is destroyed: a pure state turns into a mixed one. The panel under the main view lets you
+throw a message (a 6×6 picture, 36 bits) into the hole and compare two answers using the radio
+switch:
+
+- **Hawking 1975, information destroyed.** The message's bits vanish along with the horizon pixels
+  that hold them and nothing ever comes back. The radiation entropy rises forever and ends above
+  what the hole started with.
+- **Holographic, information preserved (’t Hooft, Susskind).** The proposal of the paper.
+
+What the simulation takes from the paper, and where:
+
+| Paper | Used for |
+|-------|----------|
+| Eq. 1.3, `S = A/4G = (A/lp²) ln 2` | The horizon holds one bit per Planck area. Here bits `= N₀ m²` (N₀ = 160), drawn as the ring of pixels. |
+| Eqs. 4.4, 4.15, `R⊥² = ρ₀² e^(t/4MG)` | The region of the horizon disturbed by the message (orange arc) grows exponentially, at the causal limit. In these units `4MG = 4m/c`. |
+| Eq. 4.10, `t_spread = 4MG ln(M²G²)` | Once that region covers the ring, the message is scrambled. This is far shorter than the evaporation time. |
+| §6 and Page (the paper's ref. 20) | After scrambling, a small arc of the horizon looks thermal and holds no information. The "Read an arc" slider shows this: with an arc of fraction f you learn nothing until f exceeds 1/2. |
+| §7, unitary S-matrix | Formation plus evaporation is unitary. Using Page's counting, the radiation entropy `min(S_rad, S_BH)` turns over at the Page time `t = τ(1 − (4/7)^(3/2)) ≈ 0.57 τ`, and the message leaves in the radiation once `S_rad − S_BH` exceeds its size. Each cyan quantum in the main view carries one bit. |
+
+Things to try: send the message at the start and watch it scatter over the ring in a few seconds, then
+return after about 70% of the lifetime; send it after the Page time and it comes back about one
+scrambling time later (Hayden–Preskill); switch to Hawking and see it destroyed.
+
+**Be careful about the claims.** The paper proposes this picture; it does not prove it, and it
+concedes in §7 that an outside S-matrix description cannot say what a freely falling observer sees.
+This simulation is bookkeeping *assuming* the proposal. It does not derive unitarity, and the
+numbers (160 bits, a 4/3 entropy ratio, Page's counting for a random state) are a toy version of the
+real thing. The entropy curves assume dust accretion is off.
+
 ## What this is not
 
 Be careful about reading too much into it:
@@ -81,7 +115,7 @@ npm test
 
 Checks the evaporation law against the analytic solution, the lifetime, orbit stability,
 swallowing, emission outside the horizon, the final burst, reproducibility with a fixed seed,
-and regressions for a hang that occurred when the last timestep took the mass to exactly zero.
+the information layer (area-law bit count, the Page time, spreading time `4MG ln N`, nothing returning before the Page time in the holographic case, everything destroyed in the Hawking case, recovered bits matching what was sent), and regressions for a hang that occurred when the last timestep took the mass to exactly zero.
 
 ## Layout
 

@@ -37,6 +37,11 @@
       this.maxPhotons = opts.maxPhotons ?? 2500;
       this.killRadius = opts.killRadius ?? 45;
       this.rand = mulberry32(opts.seed ?? 1);
+      // Information layer (see "Information" section below). A separate RNG keeps the
+      // dust/photon streams identical whether or not a message is sent.
+      this.N0 = opts.bitsAtStart ?? 160; // horizon bits at m = 1 (S = A/4G in bits)
+      this.infoMode = opts.infoMode ?? 'holographic'; // or 'hawking' (information is destroyed)
+      this.infoRand = mulberry32((opts.seed ?? 1) + 977);
       this.reset();
     }
 
@@ -51,6 +56,7 @@
       this.ghosts = [];
       this.emitAcc = 0;
       this.swallowed = 0;
+      this.message = null;
       this.history = [{ t: 0, m: 1 }];
     }
 
@@ -90,6 +96,129 @@
           vy: Math.cos(th) * vc * f * dir,
         });
       }
+    }
+
+    // ---- Information (Susskind, "The World as a Hologram", 1994; 't Hooft; Page 1993) -----
+    // This layer is bookkeeping for the *proposed* resolution of the information paradox,
+    // not a derivation of it. It assumes the proposal: the horizon stores at most one bit per
+    // Planck area, infalling information spreads over the stretched horizon at the causal
+    // limit, and the outside description is unitary.
+
+    // Eq. (1.3): S = A/4G = (A/lp^2) ln 2, i.e. one bit per Planck area. In our units the
+    // area scales like m^2, and the hole starts with N0 bits.
+    get bitsCapacity() { const r = this.m / this.m0; return this.N0 * r * r; }
+
+    // Hawking's (information-losing) radiation entropy: the radiation is exactly thermal, so
+    // its entropy only grows. A 4D blackbody emits 4/3 of the entropy the hole loses.
+    get hawkingRadEntropy() { const r = this.m / this.m0; return Math.max(0, (4 / 3) * this.N0 * (1 - r * r)); }
+
+    // Page (1993), the paper's ref. [20]: for a unitary process the radiation entropy cannot
+    // exceed what the hole can still hold, so it turns over at the Page time.
+    get pageEntropy() { return Math.min(this.hawkingRadEntropy, this.bitsCapacity); }
+
+    // Radiation entropy equals hole entropy when (4/3)(1-m^2) = m^2, i.e. m^2 = 4/7 m0^2.
+    get pageTime() { return this.lifetime * (1 - Math.pow(4 / 7, 1.5)); }
+
+    // Eq. (4.4)/(4.5): a Schwarzschild time translation is a boost with rapidity t/4MG.
+    // With GM = c^2 m this is t_h = 4GM/c^3 = 4m/c.
+    get horizonTimeScale() { return 4 * this.m / this.c; }
+
+    // Eq. (4.10): t_spread = 4MG ln(M^2 G^2), with M^2G^2 ~ number of bits.
+    get scramblingTime() { return this.horizonTimeScale * Math.log(Math.max(this.bitsCapacity, 2)); }
+
+    // The three entropy curves at time t, for plotting: hole capacity, Hawking's radiation
+    // entropy (information lost) and Page's curve (information preserved).
+    entropiesAt(t) {
+      const r = this.massAt(t) / this.m0;
+      const cap = this.N0 * r * r;
+      const rad = (4 / 3) * this.N0 * (1 - r * r);
+      return { cap, rad, page: Math.min(cap, rad) };
+    }
+
+    // Send a message (array of 0/1 bits) into the hole.
+    sendMessage(bits) {
+      if (this.evaporated || this.message || !bits.length) return false;
+      const k = bits.length, R = this.infoRand;
+      const N = this.bitsCapacity;
+      const order = Array.from({ length: k }, (_, i) => i); // order bits leave / are destroyed
+      for (let i = k - 1; i > 0; i--) {
+        const j = Math.floor(R() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      this.message = {
+        bits: bits.slice(), k, tSent: this.t, mSent: this.m, nSent: N,
+        theta0: R() * 2 * Math.PI,                              // where it hit the horizon
+        scr: Array.from({ length: k }, () => R() * 2 * Math.PI), // where scrambling puts each bit
+        order,
+        // Eq. (4.15): the affected region on the stretched horizon grows as R_perp^2 ~ exp(t/4MG).
+        // Starting at one "pixel" (angular half-width pi/sqrt(N)), it covers the ring after
+        // t_h ln N, which is eq. (4.10).
+        phi0: Math.PI / Math.sqrt(N), expo: 0,
+        recovered: 0, got: new Array(k).fill(false),
+      };
+      return true;
+    }
+
+    // Angular half-width of the disturbed region on the horizon (eq. 4.15), capped at pi.
+    get messageFront() {
+      const g = this.message;
+      return g ? Math.min(Math.PI, g.phi0 * Math.exp(g.expo)) : 0;
+    }
+    // 0 = localised at the entry point, 1 = fully spread (scrambled) over the horizon.
+    get messageSpread() { return this.message ? this.messageFront / Math.PI : 0; }
+
+    // Where bit j is drawn on the horizon ring right now.
+    messageBitAngle(j) {
+      const g = this.message;
+      const loc = g.theta0 + (j - (g.k - 1) / 2) * (2 * Math.PI / g.nSent);
+      const d = ((g.scr[j] - loc + 3 * Math.PI) % (2 * Math.PI)) - Math.PI; // shortest way round
+      return loc + this.messageSpread * d;
+    }
+
+    // Indices of message bits that are still stored on the horizon.
+    messageOnHorizon() {
+      const g = this.message;
+      if (!g) return [];
+      const all = g.bits.map((_, j) => j);
+      if (this.infoMode === 'holographic') return all.filter(j => !g.got[j]);
+      if (this.evaporated) return [];
+      // Hawking mode: bits are destroyed together with the horizon pixels that hold them.
+      const r = this.m / g.mSent;
+      const survive = Math.max(0, Math.min(g.k, Math.round(g.k * r * r)));
+      const removed = new Set(g.order.slice(0, g.k - survive));
+      return all.filter(j => !removed.has(j));
+    }
+
+    // Holographic mode: a message bit leaves in the radiation once the radiation entropy
+    // exceeds the hole's by enough (Page), and only after the message has been scrambled.
+    _updateMessage() {
+      const g = this.message;
+      if (!g || this.infoMode !== 'holographic') return;
+      let target = g.recovered;
+      if (this.evaporated) {
+        target = g.k; // whatever is left comes out in the final burst: nothing is lost
+      } else if (this.messageSpread >= 1) {
+        const frac = (this.hawkingRadEntropy - this.bitsCapacity) / g.k;
+        target = Math.max(target, Math.floor(Math.min(1, Math.max(0, frac)) * g.k + 1e-9));
+      }
+      while (g.recovered < target) {
+        const j = g.order[g.recovered];
+        g.got[j] = true;
+        g.recovered++;
+        this._spawnInfoPhoton(j);
+      }
+    }
+
+    _spawnInfoPhoton(j) {
+      const th = this.messageBitAngle(j);
+      const r = Math.max(this.rs * 1.04, 0.2);
+      const ang = th + (this.infoRand() - 0.5) * 0.5;
+      this.photons.push({
+        x: r * Math.cos(th), y: r * Math.sin(th),
+        vx: this.c * Math.cos(ang), vy: this.c * Math.sin(ang),
+        T: this.evaporated ? 30 : this.temperature, age: 0,
+        info: true, bit: this.message.bits[j], idx: j,
+      });
     }
 
     accel(x, y) {
@@ -168,6 +297,8 @@
           const v = this.m ** 3 - 3 * this.a * h;
           this.m = v > 0 ? Math.cbrt(v) : 0;
 
+          if (this.message) this.message.expo += h / (2 * this.horizonTimeScale);
+
           if (this.m <= this.mMin) {
             // Check first: a single substep can take m from just above mMin to exactly 0,
             // and the emission rate below divides by m.
@@ -188,6 +319,7 @@
         for (const g of this.ghosts) { g.x += g.vx * h; g.y += g.vy * h; g.age += h; }
         this.t += h;
       }
+      this._updateMessage();
       this.photons = this.photons.filter(q => Math.hypot(q.x, q.y) < this.killRadius);
       this.ghosts = this.ghosts.filter(g => g.age < g.life);
       const last = this.history[this.history.length - 1];

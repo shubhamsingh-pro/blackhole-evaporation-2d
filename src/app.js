@@ -14,19 +14,42 @@
   const sx = (x) => W / 2 + x * scale;
   const sy = (y) => H / 2 - y * scale;
 
-  // Optional URL parameters: ?t=60 starts 60 s into the run, ?life=120 sets the evaporation time.
+  // Optional URL parameters:
+  //   ?t=60       start 60 s into the run        ?life=120   evaporation time in seconds
+  //   ?mode=hawking | holographic                 ?send=0     send the message at t = 0 s
   const params = new URLSearchParams(location.search);
   if (params.has('life')) {
     const L = Math.min(240, Math.max(15, +params.get('life') || 90));
     $('life').value = L; $('v-life').textContent = L + ' s';
   }
+  const currentMode = () => document.querySelector('input[name=imode]:checked').value;
+  if (['hawking', 'holographic'].includes(params.get('mode'))) {
+    document.querySelector(`input[name=imode][value=${params.get('mode')}]`).checked = true;
+  }
+
+  // The message: a 6x6 picture (36 bits).
+  const MSG_W = 6;
+  const MSG_BITS = [
+    0,0,0,0,0,0,
+    0,1,0,0,1,0,
+    0,1,0,0,1,0,
+    0,0,0,0,0,0,
+    1,0,0,0,0,1,
+    0,1,1,1,1,0,
+  ];
+
   const sim = new BHCore.BlackHoleSim({
-    lifetime: +$('life').value, seed: Date.now() & 0xffff, emitRate: 40,
+    lifetime: +$('life').value, seed: Date.now() & 0xffff, emitRate: 40, infoMode: currentMode(),
   });
   sim.addDustRing(350, 7, 12);
-  if (params.has('t')) {
+  if (params.has('t') || params.has('send')) {
     const target = Math.max(0, +params.get('t') || 0);
-    while (sim.t < target && !(sim.evaporated && sim.t - sim.burstTime > 2.5)) sim.step(1 / 60);
+    const sendAt = params.has('send') ? Math.max(0, +params.get('send') || 0) : null;
+    if (sendAt === 0) sim.sendMessage(MSG_BITS);
+    while (sim.t < target && !(sim.evaporated && sim.t - sim.burstTime > 2.5)) {
+      sim.step(1 / 60);
+      if (sendAt !== null && !sim.message && sim.t >= sendAt) sim.sendMessage(MSG_BITS);
+    }
   }
 
   let paused = false;
@@ -104,6 +127,15 @@
     // Hawking quanta
     for (const q of sim.photons) {
       const x = sx(q.x), y = sy(q.y);
+      if (q.info) { // a quantum carrying one bit of the message: filled = 1, hollow = 0
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = 'rgba(103,227,255,0.95)';
+        ctx.fillStyle = 'rgba(103,227,255,0.9)';
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, 7);
+        if (q.bit) ctx.fill();
+        ctx.stroke();
+        continue;
+      }
       ctx.fillStyle = tempColor(q.T, 0.95);
       const s = q.T > 10 ? 4 : 3;
       ctx.fillRect(x - s / 2, y - s / 2, s, s);
@@ -197,6 +229,13 @@
   const ck = { sim: $('ck-sim'), exact: $('ck-exact'), diff: $('ck-diff'), note: $('ck-note'), inv: $('ck-inv') };
 
   let eqTick = 0;
+  let paperTick = 0;
+  function updatePaperRows() {
+    if ((paperTick++ % 6) !== 0) return;
+    paperRows.forEach((r, i) => { paperValEls[i].textContent = r[1](); });
+    const t = $('tau-ref'); if (t) t.textContent = sim.lifetime.toFixed(0);
+  }
+
   function updateEquations() {
     if ((eqTick++ % 6) !== 0) return; // ~10 Hz is plenty
     eqRows.forEach((r, i) => { eqValEls[i].textContent = r[1](); });
@@ -221,6 +260,209 @@
     }
   }
 
+
+  // ---- Paper equations (live) -----------------------------------------------------------
+  const paperRows = [
+    ['S = A/4G = (A/l<sub>p</sub>²) ln 2', () => sim.bitsCapacity.toFixed(1) + ' bits', 'Eq. 1.3: one bit per Planck area. Here the area scales as m², starting from ' + sim.N0 + ' bits.'],
+    ['t<sub>h</sub> = 4MG', () => sim.horizonTimeScale.toFixed(3) + ' s', 'Eq. 4.4: a Schwarzschild time t is a boost by t/4MG. In these units 4GM/c³ = 4m/c.'],
+    ['R<sub>⊥</sub>² = ρ<sub>0</sub>² e<sup>t/4MG</sup>', () => (sim.message && !sim.evaporated ? (100 * sim.messageSpread).toFixed(0) + '% of ring' : '–'), 'Eq. 4.15: how far the message has spread over the stretched horizon (grows exponentially).'],
+    ['t<sub>spread</sub> = 4MG ln(M²G²)', () => (sim.evaporated ? '–' : sim.scramblingTime.toFixed(2) + ' s'), 'Eq. 4.10: time to cover the horizon. Compare τ = ' + '<span id="tau-ref"></span> s: far shorter.'],
+    ['S<sub>rad</sub> (Hawking) = 4/3 · ΔS<sub>BH</sub>', () => sim.hawkingRadEntropy.toFixed(1) + ' bits', 'Thermal radiation only ever adds entropy; it ends above the starting ' + sim.N0 + ' bits.'],
+    ['S<sub>Page</sub> = min(S<sub>rad</sub>, S<sub>BH</sub>)', () => sim.pageEntropy.toFixed(1) + ' bits', 'Page (the paper\'s ref. 20): if the process is unitary the radiation entropy cannot exceed the hole\'s.'],
+    ['t<sub>Page</sub> = τ (1 − (4/7)<sup>3/2</sup>)', () => sim.pageTime.toFixed(1) + ' s', 'When S<sub>rad</sub> = S<sub>BH</sub>, about 57% of the way through. After it, information leaves.'],
+  ];
+  $('eq-paper').innerHTML = paperRows.map((r, i) =>
+    `<div class="eq"><span class="f">${r[0]}</span><span class="v" id="pv-${i}"></span><span class="d">${r[2]}</span></div>`
+  ).join('');
+  const paperValEls = paperRows.map((_, i) => $('pv-' + i));
+
+  // ---- Information panel: horizon screen, entropy curves, message ------------------------
+  const scr = $('screen'), sctx = scr.getContext('2d');
+  const pg = $('page'), gctx = pg.getContext('2d');
+  const mg = $('msg'), mctx = mg.getContext('2d');
+  const CYAN = '#67e3ff', AMBER = '#ffb347';
+  const TAU2 = Math.PI * 2;
+
+  const pixelBit = (i) => (Math.imul(i + 1, 2654435761) >>> 9) & 1; // stable "thermal" pixel values
+
+  function drawScreen() {
+    const w = scr.width, h = scr.height, cx = w / 2, cy = h / 2;
+    sctx.fillStyle = '#05070d'; sctx.fillRect(0, 0, w, h);
+
+    const P = sim.evaporated ? 0 : Math.max(0, Math.round(sim.bitsCapacity));
+    const R = Math.min(165, Math.max(34, 150 * sim.m));
+    const g = sim.message;
+    const mapAng = (th) => -th; // maths angle (counter-clockwise) -> canvas angle
+
+    // faint horizon disc
+    if (!sim.evaporated) {
+      sctx.fillStyle = '#000'; sctx.beginPath(); sctx.arc(cx, cy, R, 0, TAU2); sctx.fill();
+    }
+
+    // the pixels: lit = 1, dim = 0 (a thermal-looking pattern)
+    for (let i = 0; i < P; i++) {
+      const th = TAU2 * (i + 0.5) / P;
+      const wpx = Math.max(1.2, Math.min(8, (TAU2 * R / P) * 0.72));
+      sctx.strokeStyle = pixelBit(i) ? 'rgba(150,170,205,0.85)' : 'rgba(55,65,92,0.85)';
+      sctx.lineWidth = wpx;
+      sctx.beginPath();
+      sctx.moveTo(cx + R * Math.cos(th), cy - R * Math.sin(th));
+      sctx.lineTo(cx + (R + 11) * Math.cos(th), cy - (R + 11) * Math.sin(th));
+      sctx.stroke();
+    }
+
+    if (g && !sim.evaporated) {
+      // the region disturbed so far (eq. 4.15), growing at the causal limit
+      if (sim.messageSpread < 1) {
+        sctx.strokeStyle = AMBER; sctx.lineWidth = 4; sctx.globalAlpha = 0.8;
+        sctx.beginPath();
+        sctx.arc(cx, cy, R - 7, mapAng(g.theta0 + sim.messageFront), mapAng(g.theta0 - sim.messageFront));
+        sctx.stroke(); sctx.globalAlpha = 1;
+      }
+      // the message bits still stored on the horizon
+      for (const j of sim.messageOnHorizon()) {
+        const th = sim.messageBitAngle(j);
+        const x = cx + (R + 22) * Math.cos(th), y = cy - (R + 22) * Math.sin(th);
+        sctx.lineWidth = 2; sctx.strokeStyle = CYAN; sctx.fillStyle = CYAN;
+        sctx.beginPath(); sctx.arc(x, y, 5, 0, TAU2);
+        if (g.bits[j]) sctx.fill();
+        sctx.stroke();
+      }
+      // the arc a local observer reads (only while something is left on the horizon to read)
+      if (sim.messageOnHorizon().length) {
+        const f = +$('arc').value / 100;
+        sctx.strokeStyle = 'rgba(255,255,255,0.55)'; sctx.lineWidth = 2; sctx.setLineDash([2, 5]);
+        sctx.beginPath();
+        sctx.arc(cx, cy, R + 38, mapAng(g.theta0 + Math.PI * f), mapAng(g.theta0 - Math.PI * f));
+        sctx.stroke(); sctx.setLineDash([]);
+      }
+    }
+
+    sctx.fillStyle = '#8b94a8'; sctx.font = '15px system-ui, sans-serif'; sctx.textAlign = 'center';
+    if (sim.evaporated) {
+      sctx.fillStyle = '#cfd6e4';
+      sctx.fillText('No horizon left: 0 bits', cx, cy - 4);
+      sctx.fillStyle = '#8b94a8';
+      sctx.fillText(sim.infoMode === 'hawking' ? 'the information went with it' : 'everything is in the radiation', cx, cy + 16);
+    } else {
+      sctx.fillText(P + ' bits', cx, cy + 5);
+    }
+    sctx.textAlign = 'start';
+  }
+
+  function drawPage() {
+    const w = pg.width, h = pg.height, L = 46, Rr = 14, T = 22, B = 36;
+    gctx.fillStyle = '#05070d'; gctx.fillRect(0, 0, w, h);
+    const ymax = (4 / 3) * sim.N0 * 1.08, tau = sim.lifetime;
+    const X = (t) => L + (t / tau) * (w - L - Rr);
+    const Y = (v) => h - B - (v / ymax) * (h - T - B);
+    const holo = sim.infoMode === 'holographic';
+
+    gctx.strokeStyle = '#1b2030'; gctx.lineWidth = 1;
+    gctx.strokeRect(L, T, w - L - Rr, h - T - B);
+    // initial entropy line
+    gctx.setLineDash([3, 5]); gctx.strokeStyle = '#3a4468';
+    gctx.beginPath(); gctx.moveTo(L, Y(sim.N0)); gctx.lineTo(w - Rr, Y(sim.N0)); gctx.stroke(); gctx.setLineDash([]);
+    gctx.fillStyle = '#7d869b'; gctx.font = '13px system-ui, sans-serif';
+    gctx.fillText('N₀ = ' + sim.N0, 6, Y(sim.N0) + 4);
+    gctx.fillText('0', 30, Y(0) + 4);
+    gctx.fillText('0', L - 2, h - B + 16); gctx.fillText(tau.toFixed(0) + ' s', w - Rr - 30, h - B + 16);
+    gctx.fillText('entropy (bits)', 6, 14); gctx.fillText('time', (w + L) / 2 - 12, h - 8);
+
+    // Page time marker
+    gctx.strokeStyle = 'rgba(255,179,71,0.55)'; gctx.setLineDash([2, 4]);
+    gctx.beginPath(); gctx.moveTo(X(sim.pageTime), T); gctx.lineTo(X(sim.pageTime), h - B); gctx.stroke(); gctx.setLineDash([]);
+    gctx.fillStyle = 'rgba(255,179,71,0.9)'; gctx.fillText('Page time', X(sim.pageTime) - 24, T + 14);
+
+    const curve = (key, color, width, alpha, dash) => {
+      gctx.strokeStyle = color; gctx.lineWidth = width; gctx.globalAlpha = alpha; gctx.setLineDash(dash || []);
+      gctx.beginPath();
+      for (let i = 0; i <= 200; i++) {
+        const t = (i / 200) * tau, v = sim.entropiesAt(t)[key];
+        i ? gctx.lineTo(X(t), Y(v)) : gctx.moveTo(X(t), Y(v));
+      }
+      gctx.stroke(); gctx.globalAlpha = 1; gctx.setLineDash([]);
+    };
+    curve('cap', '#6ea8ff', 2.5, 1);
+    curve('rad', '#ff7a6a', holo ? 1.5 : 2.5, holo ? 0.35 : 1, [6, 4]);
+    curve('page', '#6ee7a0', 3, holo ? 1 : 0.25);
+
+    // "now" marker
+    const tn = Math.min(sim.t, tau), e = sim.entropiesAt(tn);
+    gctx.strokeStyle = 'rgba(255,255,255,0.5)'; gctx.lineWidth = 1;
+    gctx.beginPath(); gctx.moveTo(X(tn), T); gctx.lineTo(X(tn), h - B); gctx.stroke();
+    const dot = (v, c) => { gctx.fillStyle = c; gctx.beginPath(); gctx.arc(X(tn), Y(v), 4.5, 0, TAU2); gctx.fill(); };
+    dot(e.cap, '#6ea8ff'); dot(holo ? e.page : e.rad, holo ? '#6ee7a0' : '#ff7a6a');
+
+    gctx.font = '15px system-ui, sans-serif';
+    gctx.fillStyle = holo ? '#6ee7a0' : '#ff9a8c';
+    gctx.fillText(holo ? 'Ends at 0: pure → pure' : 'Ends above N₀: pure → mixed', L + 10, T + 52);
+    gctx.fillStyle = '#8b94a8';
+    gctx.fillText(holo ? 'Information is returned.' : 'Information is lost.', L + 10, T + 72);
+  }
+
+  function drawMessage() {
+    const w = mg.width, h = mg.height, cell = 36, gy = 46;
+    mctx.fillStyle = '#05070d'; mctx.fillRect(0, 0, w, h);
+    const g = sim.message;
+    const grid = (x0, known, label, status) => {
+      mctx.fillStyle = '#8b94a8'; mctx.font = '22px system-ui, sans-serif';
+      mctx.fillText(label, x0, 30);
+      for (let k = 0; k < MSG_W * MSG_W; k++) {
+        const x = x0 + (k % MSG_W) * cell, y = gy + Math.floor(k / MSG_W) * cell;
+        const isKnown = known(k);
+        mctx.fillStyle = !isKnown ? '#0b0e16' : MSG_BITS[k] ? CYAN : '#1a2236';
+        mctx.fillRect(x + 1.5, y + 1.5, cell - 3, cell - 3);
+        if (!isKnown) {
+          mctx.strokeStyle = '#1f2638'; mctx.lineWidth = 1; mctx.strokeRect(x + 1.5, y + 1.5, cell - 3, cell - 3);
+        }
+      }
+      if (status) { mctx.fillStyle = status.color; mctx.font = '20px system-ui, sans-serif'; mctx.fillText(status.text, x0, gy + MSG_W * cell + 24); }
+    };
+    grid(14, () => !!g, 'Sent', g ? null : { color: '#7d869b', text: 'not sent yet' });
+    const got = g ? g.got : null;
+    const nGot = g ? g.recovered : 0;
+    let status = null;
+    if (g && sim.infoMode === 'hawking') {
+      status = sim.evaporated ? { color: '#ff9a8c', text: 'nothing returns: lost' } : { color: '#7d869b', text: 'waiting...' };
+    } else if (g) {
+      status = nGot === g.k ? { color: '#6ee7a0', text: 'all 36 bits match' } : { color: '#7d869b', text: nGot + ' / ' + g.k + ' bits received' };
+    }
+    grid(w / 2 + 14, (k) => !!(got && got[k]), 'Received', status);
+  }
+
+  function updateInfo() {
+    drawScreen(); drawPage(); drawMessage();
+    const g = sim.message;
+    const holo = sim.infoMode === 'holographic';
+    $('i-bits').textContent = (sim.evaporated ? 0 : Math.round(sim.bitsCapacity)) + ' / ' + sim.N0;
+    $('send').disabled = !!g || sim.evaporated;
+    $('i-back-l').textContent = holo ? 'Back in radiation' : 'Destroyed';
+    if (!g) {
+      $('i-state').textContent = 'not sent'; $('i-spread').textContent = '–'; $('i-back').textContent = '–';
+      $('i-arc').textContent = 'Readable from this arc alone: –';
+    } else {
+      $('i-state').textContent = 'sent at t = ' + g.tSent.toFixed(1) + ' s';
+      $('i-spread').textContent = sim.evaporated ? '–' : (100 * sim.messageSpread).toFixed(0) + '%';
+      const on = sim.messageOnHorizon();
+      $('i-back').textContent = holo ? g.recovered + ' / ' + g.k : (g.k - on.length) + ' / ' + g.k;
+
+      // What a local observer can read from an arc of the horizon (paper section 6 / Page):
+      // before scrambling the message sits in one place; afterwards an arc of fraction f
+      // of the ring tells you nothing until f exceeds one half.
+      const f = +$('arc').value / 100, s = sim.messageSpread;
+      let inside = 0;
+      for (const j of on) {
+        const d = Math.abs(((sim.messageBitAngle(j) - g.theta0 + 3 * Math.PI) % TAU2) - Math.PI);
+        if (d <= Math.PI * f) inside++;
+      }
+      const readable = Math.round((1 - s) * inside + s * Math.max(0, 2 * f - 1) * on.length);
+      $('i-arc').textContent = on.length
+        ? 'Readable from this arc alone: ' + readable + ' of ' + on.length + ' bits' + (s >= 1 && f <= 0.5 ? ' (it looks thermal)' : '')
+        : 'Nothing left on the horizon to read.';
+    }
+  }
+
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -234,12 +476,15 @@
     drawPlot();
     updateHud();
     updateEquations();
+    updatePaperRows();
+    updateInfo();
     requestAnimationFrame(frame);
   }
 
   function restart() {
     sim.lifetime = +$('life').value;
     sim.accrete = $('accrete').checked;
+    sim.infoMode = currentMode();
     sim.reset();
     sim.addDustRing(350, 7, 12);
     flash = 0;
@@ -251,6 +496,9 @@
   $('speed').addEventListener('input', () => { speed = +$('speed').value; $('v-speed').textContent = speed + '×'; });
   $('accrete').addEventListener('change', () => { sim.accrete = $('accrete').checked; });
   $('pause').addEventListener('click', () => { paused = !paused; });
+  document.querySelectorAll('input[name=imode]').forEach((el) => el.addEventListener('change', restart)); // switching theory restarts the run
+  $('send').addEventListener('click', () => { sim.sendMessage(MSG_BITS); });
+  $('arc').addEventListener('input', () => { $('v-arc').textContent = $('arc').value + '%'; });
   $('reset').addEventListener('click', restart);
   $('dust').addEventListener('click', () => {
     if (!sim.evaporated) sim.addDustRing(150, Math.max(sim.isco + 0.5, 7), 13);
