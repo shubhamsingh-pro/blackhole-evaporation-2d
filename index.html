@@ -11,7 +11,7 @@
     margin: 0; background: #05060a; color: #cfd6e4;
     font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  .wrap { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+  .wrap { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; max-width: 1560px; margin: 0 auto; }
   .stage { flex: 1 1 560px; min-width: 300px; }
   canvas#view { width: 100%; aspect-ratio: 1 / 1; background: #000; border-radius: 10px; display: block; border: 1px solid #1b2030; }
   .side { flex: 0 1 320px; min-width: 260px; display: flex; flex-direction: column; gap: 14px; }
@@ -35,6 +35,15 @@
   .legend i { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 4px; }
   .note { font-size: 12px; color: #7d869b; }
   a { color: #7fb0ff; }
+  .eqcol { flex: 0 1 380px; min-width: 280px; display: flex; flex-direction: column; gap: 14px; }
+  .eqcol h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #8b94a8; margin: 0 0 8px; font-weight: 600; }
+  .eq { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 7px 0; border-top: 1px solid #161b2a; align-items: baseline; }
+  .eq:first-of-type { border-top: 0; }
+  .eq .f { font-family: ui-serif, Georgia, "Times New Roman", serif; font-size: 15px; color: #e8ecf5; }
+  .eq .v { font-variant-numeric: tabular-nums; color: #9fc0ff; text-align: right; white-space: nowrap; }
+  .eq .d { grid-column: 1 / -1; font-size: 12px; color: #7d869b; }
+  .check { }
+  .ok { color: #7ee2a8 !important; } .bad { color: #ff8a8a !important; } .na { color: #aab3c7 !important; }
 </style>
 </head>
 <body>
@@ -88,6 +97,15 @@
       real lifetime of even a small black hole is astronomically longer than τ.
       See the <a href="README.md">README</a>.
     </p>
+  </div>
+
+  <div class="eqcol">
+    <div class="panel"><h2>Equations in use (live)</h2><div id="eq-sim"></div></div>
+    <div class="panel"><h2>Check against the exact solution</h2><div id="eq-check"></div></div>
+    <div class="panel"><h2>Real-world formulas (SI, 4D), for reference</h2>
+      <div class="eq"><span class="f">T<sub>H</sub> = ħc³ / (8π G M k<sub>B</sub>)</span><span class="v"></span><span class="d">Hawking temperature. Cooler for heavier holes; about 6×10⁻⁸ K for the Sun's mass.</span></div>
+      <div class="eq"><span class="f">t<sub>evap</sub> = 5120 π G² M³ / (ħ c⁴)</span><span class="v"></span><span class="d">Lifetime of an isolated hole. About 2×10⁶⁷ years for the Sun's mass. The simulation rescales this to τ seconds; only the shape of the curve is kept.</span></div>
+    </div>
   </div>
 </div>
 

@@ -162,6 +162,65 @@
     $('pause').textContent = paused ? 'Resume' : 'Pause';
   }
 
+
+  // ---- Equations column: each rule the simulation uses, with its live value -------------
+  const R_SAMPLE = 9; // radius used to show the orbital speed
+  const eqRows = [
+    ['r<sub>s</sub> = 2GM/c² = 2m', () => sim.rs.toFixed(3), 'Horizon radius. Units: m = 1 at the start, so r<sub>s</sub> = 2.'],
+    ['GM = c² · m', () => sim.gm.toFixed(2), 'Gravity strength (c = ' + sim.c + ' units/s).'],
+    ['dm/dt = −a / m²', () => (sim.evaporated ? '0' : (-sim.a / (sim.m * sim.m)).toFixed(4) + ' /s'), 'Mass loss rate: the lighter the hole, the faster it loses mass.'],
+    ['a = m<sub>0</sub>³ / (3τ)', () => sim.a.toFixed(5), 'Constant that sets the lifetime τ.'],
+    ['m(t) = (m<sub>0</sub>³ − 3at)<sup>1/3</sup>', () => sim.massAt(sim.t).toFixed(4), 'Exact solution of the line above (the grey curve in the plot).'],
+    ['τ = m<sub>0</sub>³ / 3a', () => sim.lifetime.toFixed(0) + ' s', 'Total lifetime, set by the slider.'],
+    ['t<sub>left</sub> = m³ / 3a', () => sim.timeRemaining.toFixed(2) + ' s', 'Time remaining at the current mass.'],
+    ['T ∝ 1/m', () => (sim.evaporated ? '∞' : sim.temperature.toFixed(2) + '×'), 'Temperature relative to the start. Sets the colour of the quanta.'],
+    ['L ∝ 1/m²', () => (sim.evaporated ? '∞' : sim.luminosity.toFixed(2) + '×'), 'Radiated power relative to the start (T⁴ × area ∝ 1/m²).'],
+    ['N ∝ L / ⟨E⟩ ∝ 1/m', () => (sim.evaporated ? '–' : (sim.emitRate / sim.m).toFixed(1) + ' /s'), 'Quanta emitted per second.'],
+    ['a(r) = −GM / (r − r<sub>s</sub>)²', () => (sim.evaporated ? '0' : (-sim.gm / Math.pow(R_SAMPLE - sim.rs, 2)).toFixed(3)), 'Paczyński–Wiita gravity, shown at r = ' + R_SAMPLE + '.'],
+    ['v<sub>circ</sub>² = GM·r / (r − r<sub>s</sub>)²', () => (sim.evaporated ? '–' : sim.circularSpeed(R_SAMPLE).toFixed(3) + ' (r=' + R_SAMPLE + ')'), 'Circular orbit speed at that radius.'],
+    ['r<sub>photon</sub> = 3m', () => sim.photonSphere.toFixed(3), 'Photon sphere (dashed blue circle).'],
+    ['r<sub>ISCO</sub> = 6m', () => sim.isco.toFixed(3), 'Innermost stable circular orbit (dashed green circle).'],
+  ];
+
+  const eqSimEl = $('eq-sim');
+  eqSimEl.innerHTML = eqRows.map((r, i) =>
+    `<div class="eq"><span class="f">${r[0]}</span><span class="v" id="eqv-${i}"></span><span class="d">${r[2]}</span></div>`
+  ).join('');
+  const eqValEls = eqRows.map((_, i) => $('eqv-' + i));
+
+  const checkEl = $('eq-check');
+  checkEl.innerHTML =
+    '<div class="eq"><span class="f">m<sub>sim</sub></span><span class="v" id="ck-sim"></span><span class="d">Mass the simulation is actually using.</span></div>' +
+    '<div class="eq"><span class="f">m<sub>exact</sub> = (m<sub>0</sub>³ − 3at)<sup>1/3</sup></span><span class="v" id="ck-exact"></span><span class="d">Formula evaluated at the current time.</span></div>' +
+    '<div class="eq"><span class="f">|m<sub>sim</sub> − m<sub>exact</sub>|</span><span class="v" id="ck-diff"></span><span class="d" id="ck-note"></span></div>' +
+    '<div class="eq"><span class="f">m<sub>sim</sub>³ + 3a·t</span><span class="v" id="ck-inv"></span><span class="d">Should stay equal to m<sub>0</sub>³ = 1 the whole run (a conserved quantity of the law).</span></div>';
+  const ck = { sim: $('ck-sim'), exact: $('ck-exact'), diff: $('ck-diff'), note: $('ck-note'), inv: $('ck-inv') };
+
+  let eqTick = 0;
+  function updateEquations() {
+    if ((eqTick++ % 6) !== 0) return; // ~10 Hz is plenty
+    eqRows.forEach((r, i) => { eqValEls[i].textContent = r[1](); });
+
+    const exact = sim.massAt(sim.t);
+    ck.sim.textContent = sim.m.toFixed(6);
+    ck.exact.textContent = exact.toFixed(6);
+    const setStatus = (cls, text, note) => { ck.diff.className = 'v ' + cls; ck.diff.textContent = text; ck.note.textContent = note; };
+
+    if (sim.evaporated) {
+      setStatus('na', 'n/a', 'The hole reached the final burst at m = ' + sim.mMin + ', so the smooth law no longer applies.');
+      ck.inv.className = 'v na'; ck.inv.textContent = 'n/a';
+    } else if (sim.accrete && sim.swallowed > 0) {
+      setStatus('na', 'n/a', 'Accretion is on: swallowed dust adds mass, so the simulation is meant to differ from the formula.');
+      ck.inv.className = 'v na'; ck.inv.textContent = 'n/a';
+    } else {
+      const d = Math.abs(sim.m - exact);
+      setStatus(d < 1e-6 ? 'ok' : 'bad', d.toExponential(1) + (d < 1e-6 ? '  ✓' : '  ✗'), 'Should be below 1e-6; it is exact up to floating-point rounding.');
+      const inv = Math.pow(sim.m, 3) + 3 * sim.a * sim.t;
+      ck.inv.className = 'v ' + (Math.abs(inv - 1) < 1e-6 ? 'ok' : 'bad');
+      ck.inv.textContent = inv.toFixed(6) + (Math.abs(inv - 1) < 1e-6 ? '  ✓' : '  ✗');
+    }
+  }
+
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -174,6 +233,7 @@
     drawView();
     drawPlot();
     updateHud();
+    updateEquations();
     requestAnimationFrame(frame);
   }
 

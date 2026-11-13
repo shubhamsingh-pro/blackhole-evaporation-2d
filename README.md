@@ -24,6 +24,10 @@ Or just open `index.html` in a browser. Useful URL parameters:
 | `?t=60`   | start 60 simulated seconds into the run |
 | `?life=120` | evaporation time τ in seconds (15–240) |
 
+The right-hand column lists every equation the simulation uses with its live value, and checks the
+simulated mass against the exact solution `m(t) = (m₀³ − 3at)^(1/3)` (the difference should stay
+below 1e-6; it is shown as n/a after the final burst, or when dust accretion is on).
+
 Controls: **Space** pauses, **R** restarts. The sidebar sets the evaporation time τ and playback
 speed, toggles whether swallowed dust feeds the hole, and shows the photon sphere (3M) and
 innermost stable circular orbit (6M).
