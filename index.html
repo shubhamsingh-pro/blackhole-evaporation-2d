@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2D Black Hole Evaporation</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #05060a; color: #cfd6e4;
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+  .stage { flex: 1 1 560px; min-width: 300px; }
+  canvas#view { width: 100%; aspect-ratio: 1 / 1; background: #000; border-radius: 10px; display: block; border: 1px solid #1b2030; }
+  .side { flex: 0 1 320px; min-width: 260px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 18px; margin: 0 0 2px; font-weight: 600; color: #e8ecf5; }
+  .sub { color: #8b94a8; font-size: 13px; margin: 0; }
+  .panel { background: #0d1019; border: 1px solid #1b2030; border-radius: 10px; padding: 12px 14px; }
+  .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-variant-numeric: tabular-nums; }
+  .stats dt { color: #8b94a8; } .stats dd { margin: 0; text-align: right; color: #e8ecf5; }
+  label { display: block; margin: 8px 0 2px; color: #aab3c7; }
+  label span { float: right; color: #e8ecf5; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  button {
+    background: #1a2236; color: #e8ecf5; border: 1px solid #2a3552; border-radius: 6px;
+    padding: 6px 12px; cursor: pointer; font: inherit;
+  }
+  button:hover { background: #222d49; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #aab3c7; }
+  canvas#plot { width: 100%; height: 110px; display: block; }
+  .legend { font-size: 12px; color: #8b94a8; margin-top: 4px; }
+  .legend i { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 4px; }
+  .note { font-size: 12px; color: #7d869b; }
+  a { color: #7fb0ff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage">
+    <canvas id="view" width="900" height="900" aria-label="Black hole evaporation simulation"></canvas>
+  </div>
+
+  <div class="side">
+    <div>
+      <h1>2D Black Hole Evaporation</h1>
+      <p class="sub">A toy model of Hawking radiation: the hole shrinks, heats up and ends in a burst.</p>
+    </div>
+
+    <div class="panel">
+      <dl class="stats">
+        <dt>Mass</dt><dd id="s-mass">1.000</dd>
+        <dt>Horizon radius</dt><dd id="s-rs">2.00</dd>
+        <dt>Temperature (rel.)</dt><dd id="s-temp">1.0×</dd>
+        <dt>Power (rel.)</dt><dd id="s-lum">1.0×</dd>
+        <dt>Time left</dt><dd id="s-left">–</dd>
+        <dt>Dust swallowed</dt><dd id="s-swal">0</dd>
+      </dl>
+    </div>
+
+    <div class="panel">
+      <canvas id="plot" width="600" height="220"></canvas>
+      <div class="legend">
+        <i style="background:#7fb0ff"></i>simulated mass &nbsp;
+        <i style="background:#ffffff55"></i>analytic m(t) = (1 − t/τ)<sup>1/3</sup>
+      </div>
+    </div>
+
+    <div class="panel">
+      <label>Evaporation time τ <span id="v-life">90 s</span></label>
+      <input id="life" type="range" min="15" max="240" step="5" value="90">
+      <label>Playback speed <span id="v-speed">1×</span></label>
+      <input id="speed" type="range" min="0.25" max="4" step="0.25" value="1">
+      <label class="check"><input id="accrete" type="checkbox"> Swallowed dust feeds the hole</label>
+      <label class="check"><input id="guides" type="checkbox" checked> Show photon sphere and ISCO</label>
+      <div class="row">
+        <button id="pause">Pause</button>
+        <button id="reset">Restart</button>
+        <button id="dust">Add dust ring</button>
+      </div>
+    </div>
+
+    <p class="note">
+      Not a full general-relativity calculation: gravity is the Paczyński–Wiita pseudo-Newtonian
+      potential, the emission rule is the standard Hawking scaling (T ∝ 1/M, dM/dt ∝ −1/M²), and the
+      real lifetime of even a small black hole is astronomically longer than τ.
+      See the <a href="README.md">README</a>.
+    </p>
+  </div>
+</div>
+
+<script src="src/core.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>
