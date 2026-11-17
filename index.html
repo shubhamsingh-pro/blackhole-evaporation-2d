@@ -72,12 +72,47 @@
   .seg button.on { background: #27498f; color: #fff; }
   .ctl3d { margin-top: 10px; }
   .ctl3d .note { margin: 8px 0 0; }
+  .pen { margin-top: 16px; }
+  .pen h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #8b94a8; margin: 0 0 8px; font-weight: 600; }
+  .pgrid { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  #pen { width: 340px; max-width: 100%; aspect-ratio: 540 / 880; background: #05070d; border: 1px solid #161b2a; border-radius: 8px; display: block; }
+  .pleg { flex: 1 1 280px; min-width: 240px; }
+  .pleg .lead { margin: 0 0 10px; color: #b8c1d6; }
+  .legend { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 7px; font-size: 13px; color: #aab3c7; }
+  .legend li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; }
+  .legend .sw { display: block; height: 0; border-top: 3px solid #888; }
+  .legend .dot { border-top: 3px dotted #fff; } .legend .dash { border-top: 2px dashed #67e3ff; }
+  .legend .wav { border-top: 3px solid #ff5a4d; border-radius: 3px; }
+  #pen-note { font-size: 13px; color: #cfd6e4; padding: 8px 10px; border: 1px solid #1b2030; border-radius: 8px; background: #0a0e18; margin: 0 0 10px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="stage">
     <canvas id="view" width="900" height="900" aria-label="Black hole evaporation simulation" style="touch-action:none"></canvas>
+
+    <div class="panel pen" id="penrose">
+      <h2>Penrose diagram: the causal structure of this evaporation</h2>
+      <div class="pgrid">
+        <canvas id="pen" width="540" height="880" aria-label="Penrose diagram of an evaporating black hole"></canvas>
+        <div class="pleg">
+          <p class="lead">A Penrose diagram squeezes all of space and time onto a page so that light always travels at 45°. Time runs upwards, the left edge is the centre (r = 0), and the right side is far away. It follows your run live.</p>
+          <ul class="legend">
+            <li><span class="sw" style="border-color:#7d869b"></span><span>Centre of the star, r = 0. After the hole is gone it reappears, shifted to the right.</span></li>
+            <li><span class="sw" style="border-color:#e8b04a"></span><span>The collapsing shell that forms the hole.</span></li>
+            <li><span class="sw wav"></span><span>The singularity: spacelike, so it is a moment in time, not a place.</span></li>
+            <li><span class="sw dot"></span><span>Event horizon: the last ray that can still escape to I⁺.</span></li>
+            <li><span class="sw" style="border-color:#ff9646"></span><span>Apparent horizon: shrinks as the hole radiates. Bright = already happened.</span></li>
+            <li><span class="sw dash"></span><span>Stretched horizon, the membrane in Susskind's paper.</span></li>
+            <li><span class="sw" style="border-color:#ffb347"></span><span>Orange rays are Hawking quanta heading to I⁺ (colour = temperature, so it gets hotter); the blue ones are their partners falling into the singularity.</span></li>
+            <li><span class="sw" style="border-color:#fff"></span><span>"Now": a slice through the hole at the current time.</span></li>
+            <li><span class="sw" style="border-color:#67e3ff"></span><span>Your message, once you send one.</span></li>
+          </ul>
+          <p id="pen-note"></p>
+          <p class="note">A schematic: light is drawn at exactly 45°, the singularity is flatter than that and the apparent horizon steeper, but distances are not to scale. The evaporation point P is the awkward part: taken literally it would be a naked singularity, so this traditional picture is a cartoon of the story, not a solution of it.</p>
+        </div>
+      </div>
+    </div>
 
     <div class="panel info" id="info">
       <h2>The information paradox and Susskind's "World as a Hologram"</h2>
@@ -204,6 +239,7 @@
 </div>
 
 <script src="src/core.js"></script>
+<script src="src/penrose.js"></script>
 <script src="src/app.js"></script>
 </body>
 </html>

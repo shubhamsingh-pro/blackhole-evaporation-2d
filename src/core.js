@@ -205,7 +205,7 @@
         // Starting at one "pixel" (angular half-width pi/sqrt(N)), it covers the ring after
         // t_h ln N, which is eq. (4.10).
         phi0: Math.PI / Math.sqrt(N), expo: 0,
-        recovered: 0, got: new Array(k).fill(false),
+        recovered: 0, got: new Array(k).fill(false), tRec: [], // tRec: sim time each bit left in the radiation
       };
       return true;
     }
@@ -255,6 +255,7 @@
       while (g.recovered < target) {
         const j = g.order[g.recovered];
         g.got[j] = true;
+        g.tRec.push(this.t);
         g.recovered++;
         this._spawnInfoPhoton(j);
       }

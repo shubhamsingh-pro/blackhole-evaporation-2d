@@ -624,6 +624,24 @@
     }
   }
 
+
+  // ---- Penrose diagram ----------------------------------------------------------------------
+  const pen = $('pen'), penCtx = pen.getContext('2d');
+  const PAGE_F = 1 - Math.pow(4 / 7, 1.5);
+  const penColorAt = (s, a) => tempColor(Math.min(40, 1 / Math.max(sim.massAt(s * sim.lifetime), 0.025)), a);
+  function drawPenrose() {
+    const g = sim.message;
+    const f = sim.evaporated ? 1 : Math.min(1, sim.t / sim.lifetime);
+    Penrose.draw(penCtx, pen.width, pen.height, {
+      f, evaporated: sim.evaporated, mode: sim.infoMode, pageF: PAGE_F, colorAt: penColorAt,
+      message: g ? { fSent: g.tSent / sim.lifetime, k: g.k, recovered: g.recovered, tRec: g.tRec.map((t) => t / sim.lifetime) } : null,
+    });
+    const holo = sim.infoMode === 'holographic';
+    $('pen-note').textContent = holo
+      ? 'Holographic: seen from outside, the message stays on the stretched horizon (cyan highlight) and leaves in the radiation after the Page time (cyan rays to I⁺). The dashed cyan line inside is the infalling observer\'s own, uneventful journey.'
+      : 'Hawking: the partners and the message all end on the singularity (✗). The radiation reaching I⁺ is exactly thermal, so after P the information has nowhere to be: a pure state has become mixed.';
+  }
+
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -640,6 +658,7 @@
     updateEquations();
     updatePaperRows();
     updateInfo();
+    drawPenrose();
     requestAnimationFrame(frame);
   }
 

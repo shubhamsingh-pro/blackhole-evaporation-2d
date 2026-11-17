@@ -116,6 +116,12 @@ This simulation is bookkeeping *assuming* the proposal. It does not derive unita
 numbers (160 bits, a 4/3 entropy ratio, Page's counting for a random state) are a toy version of the
 real thing. The entropy curves assume dust accretion is off.
 
+## The Penrose diagram
+
+Below the main view there is a live Penrose (causal) diagram of the same run. Light travels at 45 degrees, time goes up, the left edge is r = 0. It shows the collapsing shell, the singularity (spacelike), the event horizon (the "last ray"), the shrinking apparent horizon, the stretched horizon from the paper, the Hawking pairs (outgoing quanta coloured by temperature, partners falling in), the Page time, and a "now" slice that moves with the simulation. Your message is drawn too: in Hawking mode it ends on the singularity, in holographic mode it stays on the stretched horizon and returns in the radiation after the Page time.
+
+It is a schematic: the geometry obeys the rules (null rays at 45 degrees, spacelike singularity, timelike apparent horizon, all checked in `test/penrose.test.js`) but distances are not to scale, and the evaporation point P is a cartoon of the traditional picture.
+
 ## What this is not
 
 Be careful about reading too much into it:
@@ -149,6 +155,7 @@ over the sphere, `setDim` preserves radii and speeds, a full 3D run recovers the
 index.html        page and controls
 src/core.js       physics, 2D and 3D (no DOM; runs in browser and Node)
 src/app.js        canvas rendering (2D view, 3D camera and renderer), HUD, controls
+src/penrose.js    Penrose diagram geometry (pure, tested) and its drawing
 test/             Node tests (node:test, no dependencies)
 ```
 
