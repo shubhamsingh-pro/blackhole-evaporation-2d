@@ -34,7 +34,7 @@
       this.accrete = opts.accrete ?? false; // do swallowed dust add mass?
       this.dustMass = opts.dustMass ?? 0.0004;
       this.emitRate = opts.emitRate ?? 30; // Hawking quanta per second at m = 1
-      this.maxPhotons = opts.maxPhotons ?? 2500;
+      this.maxPhotons = opts.maxPhotons ?? 2500; // 3D: bursts push this up temporarily
       this.killRadius = opts.killRadius ?? 45;
       this.rand = mulberry32(opts.seed ?? 1);
       // Information layer (see "Information" section below). A separate RNG keeps the
@@ -42,6 +42,10 @@
       this.N0 = opts.bitsAtStart ?? 160; // horizon bits at m = 1 (S = A/4G in bits)
       this.infoMode = opts.infoMode ?? 'holographic'; // or 'hawking' (information is destroyed)
       this.infoRand = mulberry32((opts.seed ?? 1) + 977);
+      // 2 = everything stays in the plane z = 0 (the original toy); 3 = full 3D. The 3D-only
+      // random draws use their own generator so the 2D stream is untouched.
+      this.dim = opts.dim ?? 2;
+      this.rand3 = mulberry32((opts.seed ?? 1) + 4242);
       this.reset();
     }
 
@@ -89,12 +93,59 @@
         const vc = this.circularSpeed(r);
         const f = 0.9 + 0.1 * this.rand(); // mildly sub-circular -> slightly eccentric
         const dir = 1; // all prograde
-        this.dust.push({
+        const p = {
           x: r * Math.cos(th),
           y: r * Math.sin(th),
+          z: 0,
           vx: -Math.sin(th) * vc * f * dir,
           vy: Math.cos(th) * vc * f * dir,
-        });
+          vz: 0,
+        };
+        if (this.dim === 3) this._tilt(p, 0.6); // a puffy disc instead of a flat one
+        this.dust.push(p);
+      }
+    }
+
+    // Uniformly random unit vector (3D).
+    _unit3() {
+      const R = this.rand3;
+      const z = 2 * R() - 1, ph = 2 * Math.PI * R(), q = Math.sqrt(1 - z * z);
+      return [q * Math.cos(ph), q * Math.sin(ph), z];
+    }
+
+    // Rotate a particle's position and velocity together about a random axis lying in the
+    // equatorial plane. A central force is rotation-symmetric, so the orbit stays a valid
+    // orbit with the same radius and speed, just in a tilted plane.
+    _tilt(p, maxTilt) {
+      const R = this.rand3;
+      const al = R() * 2 * Math.PI, t = (2 * R() - 1) * maxTilt;
+      const kx = Math.cos(al), ky = Math.sin(al); // kz = 0
+      const c = Math.cos(t), sn = Math.sin(t);
+      const rot = (x, y, z) => {
+        const kd = kx * x + ky * y;                       // k . v
+        const cx = ky * z, cy = -kx * z, cz = kx * y - ky * x; // k x v
+        return [x * c + cx * sn + kx * kd * (1 - c),
+                y * c + cy * sn + ky * kd * (1 - c),
+                z * c + cz * sn];
+      };
+      [p.x, p.y, p.z] = rot(p.x, p.y, p.z || 0);
+      [p.vx, p.vy, p.vz] = rot(p.vx, p.vy, p.vz || 0);
+    }
+
+    // Switch between the 2D toy and full 3D while the simulation runs.
+    setDim(d) {
+      if (d === this.dim) return;
+      this.dim = d;
+      if (d === 2) {
+        for (const p of this.dust) { p.z = 0; p.vz = 0; }
+        for (const q of this.photons) {
+          const sp = Math.hypot(q.vx, q.vy, q.vz || 0), hz = Math.hypot(q.vx, q.vy);
+          if (hz > 1e-9) { q.vx *= sp / hz; q.vy *= sp / hz; }
+          q.z = 0; q.vz = 0;
+        }
+        for (const g of this.ghosts) { g.z = 0; g.vz = 0; }
+      } else {
+        for (const p of this.dust) this._tilt(p, 0.6);
       }
     }
 
@@ -214,32 +265,37 @@
       const r = Math.max(this.rs * 1.04, 0.2);
       const ang = th + (this.infoRand() - 0.5) * 0.5;
       this.photons.push({
-        x: r * Math.cos(th), y: r * Math.sin(th),
-        vx: this.c * Math.cos(ang), vy: this.c * Math.sin(ang),
+        x: r * Math.cos(th), y: r * Math.sin(th), z: 0,
+        vx: this.c * Math.cos(ang), vy: this.c * Math.sin(ang), vz: 0,
         T: this.evaporated ? 30 : this.temperature, age: 0,
         info: true, bit: this.message.bits[j], idx: j,
       });
     }
 
-    accel(x, y) {
-      if (this.evaporated) return [0, 0];
-      const r = Math.hypot(x, y);
+    // Radial factor k such that a = k * (x, y, z).  PW potential: a = -GM / (r - rs)^2.
+    _gk(r) {
+      if (this.evaporated) return 0;
       const d = Math.max(r - this.rs, 0.05);
-      const k = -this.gm / (d * d * r);
-      return [k * x, k * y];
+      return -this.gm / (d * d * r);
+    }
+
+    accel(x, y, z = 0) {
+      const k = this._gk(Math.hypot(x, y, z));
+      return [k * x, k * y, k * z];
     }
 
     _stepDust(h) {
       const keep = [];
       for (const p of this.dust) {
+        if (p.z === undefined) { p.z = 0; p.vz = 0; }
         // velocity Verlet (symplectic -> orbits stay stable over many periods)
-        let [ax, ay] = this.accel(p.x, p.y);
-        p.vx += 0.5 * h * ax; p.vy += 0.5 * h * ay;
-        p.x += h * p.vx; p.y += h * p.vy;
-        [ax, ay] = this.accel(p.x, p.y);
-        p.vx += 0.5 * h * ax; p.vy += 0.5 * h * ay;
+        let k = this._gk(Math.hypot(p.x, p.y, p.z));
+        p.vx += 0.5 * h * k * p.x; p.vy += 0.5 * h * k * p.y; p.vz += 0.5 * h * k * p.z;
+        p.x += h * p.vx; p.y += h * p.vy; p.z += h * p.vz;
+        const r = Math.hypot(p.x, p.y, p.z);
+        k = this._gk(r);
+        p.vx += 0.5 * h * k * p.x; p.vy += 0.5 * h * k * p.y; p.vz += 0.5 * h * k * p.z;
 
-        const r = Math.hypot(p.x, p.y);
         if (!this.evaporated && r <= this.rs * 1.08) {
           this.swallowed++;
           if (this.accrete) this.m += this.dustMass;
@@ -250,22 +306,47 @@
       this.dust = keep;
     }
 
+    _emitPair3(T) {
+      const R = this.rand3;
+      const u = this._unit3();
+      const r = this.rs * (1.02 + 0.06 * R());
+      // direction a little off radial, like the 2D case: rotate u towards a random perpendicular
+      const w = this._unit3();
+      const wu = w[0] * u[0] + w[1] * u[1] + w[2] * u[2];
+      let px = w[0] - wu * u[0], py = w[1] - wu * u[1], pz = w[2] - wu * u[2];
+      const pn = Math.hypot(px, py, pz) || 1;
+      px /= pn; py /= pn; pz /= pn;
+      const tilt = (R() - 0.5) * 1.1, ct = Math.cos(tilt), st = Math.sin(tilt);
+      this.photons.push({
+        x: r * u[0], y: r * u[1], z: r * u[2],
+        vx: this.c * (u[0] * ct + px * st), vy: this.c * (u[1] * ct + py * st), vz: this.c * (u[2] * ct + pz * st),
+        T, age: 0,
+      });
+      const ri = this.rs * 0.95;
+      this.ghosts.push({
+        x: ri * u[0], y: ri * u[1], z: ri * u[2],
+        vx: -this.c * 0.5 * u[0], vy: -this.c * 0.5 * u[1], vz: -this.c * 0.5 * u[2],
+        life: 0.35, age: 0,
+      });
+    }
+
     _emitPair(T) {
       if (this.photons.length >= this.maxPhotons) return;
+      if (this.dim === 3) { this._emitPair3(T); return; }
       const th = this.rand() * Math.PI * 2;
       const r = this.rs * (1.02 + 0.06 * this.rand());
       const spread = (this.rand() - 0.5) * 1.1; // radians off radial
       const ang = th + spread;
       this.photons.push({
-        x: r * Math.cos(th), y: r * Math.sin(th),
-        vx: this.c * Math.cos(ang), vy: this.c * Math.sin(ang),
+        x: r * Math.cos(th), y: r * Math.sin(th), z: 0,
+        vx: this.c * Math.cos(ang), vy: this.c * Math.sin(ang), vz: 0,
         T, age: 0,
       });
       // The negative-energy partner: shown briefly falling into the hole.
       const ri = this.rs * 0.95;
       this.ghosts.push({
-        x: ri * Math.cos(th), y: ri * Math.sin(th),
-        vx: -this.c * 0.5 * Math.cos(th), vy: -this.c * 0.5 * Math.sin(th),
+        x: ri * Math.cos(th), y: ri * Math.sin(th), z: 0,
+        vx: -this.c * 0.5 * Math.cos(th), vy: -this.c * 0.5 * Math.sin(th), vz: 0,
         life: 0.35, age: 0,
       });
     }
@@ -275,13 +356,16 @@
       this.evaporated = true;
       this.burstTime = this.t;
       this.m = 0;
-      for (let i = 0; i < 500; i++) {
+      for (let i = 0; i < (this.dim === 3 ? 900 : 500); i++) {
         const th = this.rand() * Math.PI * 2;
         const sp = this.c * (0.55 + 0.45 * this.rand());
-        this.photons.push({
-          x: 0, y: 0, vx: sp * Math.cos(th), vy: sp * Math.sin(th),
-          T: 25 + 15 * this.rand(), age: 0,
-        });
+        const T = 25 + 15 * this.rand();
+        if (this.dim === 3) {
+          const u = this._unit3();
+          this.photons.push({ x: 0, y: 0, z: 0, vx: sp * u[0], vy: sp * u[1], vz: sp * u[2], T, age: 0 });
+        } else {
+          this.photons.push({ x: 0, y: 0, z: 0, vx: sp * Math.cos(th), vy: sp * Math.sin(th), vz: 0, T, age: 0 });
+        }
       }
       this.ghosts.length = 0;
     }
@@ -315,12 +399,12 @@
           }
         }
         this._stepDust(h);
-        for (const q of this.photons) { q.x += q.vx * h; q.y += q.vy * h; q.age += h; }
-        for (const g of this.ghosts) { g.x += g.vx * h; g.y += g.vy * h; g.age += h; }
+        for (const q of this.photons) { q.x += q.vx * h; q.y += q.vy * h; q.z += q.vz * h; q.age += h; }
+        for (const g of this.ghosts) { g.x += g.vx * h; g.y += g.vy * h; g.z += g.vz * h; g.age += h; }
         this.t += h;
       }
       this._updateMessage();
-      this.photons = this.photons.filter(q => Math.hypot(q.x, q.y) < this.killRadius);
+      this.photons = this.photons.filter(q => Math.hypot(q.x, q.y, q.z) < this.killRadius);
       this.ghosts = this.ghosts.filter(g => g.age < g.life);
       const last = this.history[this.history.length - 1];
       if (this.t - last.t >= 0.25 || (this.evaporated && last.m !== 0)) {

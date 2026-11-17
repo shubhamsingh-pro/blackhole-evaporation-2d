@@ -1,7 +1,8 @@
-# 2D Black Hole Evaporation
+# Black Hole Evaporation, 2D and 3D
 
-An interactive toy simulation of a black hole evaporating through Hawking radiation. It runs in
-the browser with no build step and no dependencies.
+An interactive toy simulation of a black hole evaporating through Hawking radiation, with a switch
+between a flat 2D slice and a full 3D view. It runs in the browser with no build step and no
+dependencies.
 
 A black hole sits in the middle of a ring of orbiting dust. As it radiates, it
 
@@ -25,12 +26,13 @@ Or just open `index.html` in a browser. Useful URL parameters:
 | `?life=120` | evaporation time τ in seconds (15–240) |
 | `?mode=hawking` or `?mode=holographic` | which theory the information panel simulates |
 | `?send=0` | send the message at t = 0 s (any time in seconds works) |
+| `?dim=3` | start in 3D (add `&yaw=0.6&elev=0.5&dist=42&auto=0` to set the camera) |
 
 The right-hand column lists every equation the simulation uses with its live value, and checks the
 simulated mass against the exact solution `m(t) = (m₀³ − 3at)^(1/3)` (the difference should stay
 below 1e-6; it is shown as n/a after the final burst, or when dust accretion is on).
 
-Controls: **Space** pauses, **R** restarts. The sidebar sets the evaporation time τ and playback
+Controls: **Space** pauses, **R** restarts, **2** / **3** switch between the 2D and 3D views. The sidebar sets the evaporation time τ and playback
 speed, toggles whether swallowed dust feeds the hole, and shows the photon sphere (3M) and
 innermost stable circular orbit (6M).
 
@@ -59,6 +61,28 @@ effect, and also that orbits stay stable when the mass is held fixed.
 Each emitted quantum is drawn with a dim "partner" falling into the hole. This is the common
 pair-creation picture of Hawking radiation; it is a visual aid, and the mass loss itself comes
 from the formula above, not from counting partners.
+
+## 2D and 3D
+
+The **2D / 3D** switch at the top of the sidebar changes the physics and the camera together, while the
+run keeps going.
+
+- **2D** is the original flat slice: everything stays in the plane `z = 0`.
+- **3D** runs the same laws in three dimensions. Gravity is the same central pseudo-Newtonian force, so a
+  tilted orbit is just a rotated copy of a flat one; Hawking quanta are emitted uniformly over the whole
+  horizon sphere and the final burst goes out in all directions; the dust ring becomes a thick disc of
+  tilted orbits.
+- **Camera.** Drag to orbit, scroll to zoom, **Reset view** to go back, **Auto-rotate** to let it spin. The
+  renderer is a small perspective projection on a canvas (no WebGL, no dependencies): the horizon is a
+  black sphere with a latitude/longitude grid, the photon sphere is drawn as three great circles, the
+  ISCO as a ring, nearer particles are larger and brighter, and anything behind the hole is hidden.
+  The 2D view is the same camera looking straight down, so the switch is a smooth camera move.
+- Switching to 2D flattens the dust and the quanta into the plane (speeds of quanta are kept); switching to
+  3D tilts the existing dust into a disc.
+
+The mass law, temperature and power do not depend on the dimension. The information panel does read
+differently: in 3D the horizon really is a sphere of area `4π r_s² ∝ m²`, so `S = A/4G` is literal, and the
+pixel ring on the horizon screen is its equator. In 2D the ring stands in for the sphere.
 
 ## The information paradox (Susskind, "The World as a Hologram", 1994)
 
@@ -97,15 +121,16 @@ real thing. The entropy curves assume dust accretion is off.
 Be careful about reading too much into it:
 
 - **Not a general-relativity solver.** Light does not bend around the hole; photons travel in
-  straight lines at `c`. Gravity is pseudo-Newtonian.
+  straight lines at `c`. Gravity is pseudo-Newtonian. The 3D mode has no spin, so the disc does not
+  precess or warp, and there is no lensing of the background.
 - **Not a quantum field theory calculation.** There is no greybody factor, no angular-momentum
   dependence and no spectrum. Quanta are coloured by temperature only.
 - **The timescale is made up.** A real black hole of one solar mass would take about 10⁶⁷ years
   to evaporate. Here you choose τ so that it takes about a minute.
 - **The ending is a cartoon.** What actually happens in the last instant is unknown without a
   theory of quantum gravity.
-- **It's 2D.** The Hawking scalings used are the 4D ones. A true 2D black hole (for example in
-  CGHS dilaton gravity) has different formulas.
+- **The 2D mode is a slice, not a true 2D universe.** The Hawking scalings used are the 4D ones. A true
+  2D black hole (for example in CGHS dilaton gravity) has different formulas.
 
 ## Tests
 
@@ -115,14 +140,15 @@ npm test
 
 Checks the evaporation law against the analytic solution, the lifetime, orbit stability,
 swallowing, emission outside the horizon, the final burst, reproducibility with a fixed seed,
-the information layer (area-law bit count, the Page time, spreading time `4MG ln N`, nothing returning before the Page time in the holographic case, everything destroyed in the Hawking case, recovered bits matching what was sent), and regressions for a hang that occurred when the last timestep took the mass to exactly zero.
+the information layer (area-law bit count, the Page time, spreading time `4MG ln N`, nothing returning before the Page time in the holographic case, everything destroyed in the Hawking case, recovered bits matching what was sent), 3D physics (tilted orbits keep their plane, emission is uniform
+over the sphere, `setDim` preserves radii and speeds, a full 3D run recovers the message), and regressions for a hang that occurred when the last timestep took the mass to exactly zero.
 
 ## Layout
 
 ```
 index.html        page and controls
-src/core.js       physics (no DOM; runs in browser and Node)
-src/app.js        canvas rendering, HUD, controls
+src/core.js       physics, 2D and 3D (no DOM; runs in browser and Node)
+src/app.js        canvas rendering (2D view, 3D camera and renderer), HUD, controls
 test/             Node tests (node:test, no dependencies)
 ```
 

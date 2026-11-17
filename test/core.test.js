@@ -240,3 +240,106 @@ test('information layer does not disturb the dust/photon random streams', () => 
   };
   assert.equal(run(false), run(true));
 });
+
+// ---- 3D ----------------------------------------------------------------------------
+
+const norm3 = (a, b, c) => Math.hypot(a, b, c);
+
+test('2D mode keeps every particle exactly in the plane z = 0', () => {
+  const sim = new BlackHoleSim({ lifetime: 30, emitRate: 40, seed: 2, dim: 2 });
+  sim.addDustRing(100);
+  for (let i = 0; i < 20 * 60; i++) sim.step(1 / 60);
+  assert.ok(sim.dust.every(p => p.z === 0 && p.vz === 0));
+  assert.ok(sim.photons.every(q => q.z === 0 && q.vz === 0));
+});
+
+test('3D: a tilted circular orbit stays circular and keeps its orbital plane', () => {
+  const sim = new BlackHoleSim({ lifetime: 1e9, emitRate: 0, dim: 3 });
+  const r0 = 9, v = sim.circularSpeed(r0), t = 0.7;
+  sim.dust.push({ x: r0, y: 0, z: 0, vx: 0, vy: v * Math.cos(t), vz: v * Math.sin(t) });
+  const L0 = (() => { const p = sim.dust[0]; return [p.y * p.vz - p.z * p.vy, p.z * p.vx - p.x * p.vz, p.x * p.vy - p.y * p.vx]; })();
+  let rmin = Infinity, rmax = 0, worstLdir = 0;
+  for (let i = 0; i < 60 * 120; i++) {
+    sim.step(1 / 120);
+    const p = sim.dust[0];
+    const r = norm3(p.x, p.y, p.z);
+    rmin = Math.min(rmin, r); rmax = Math.max(rmax, r);
+    const L = [p.y * p.vz - p.z * p.vy, p.z * p.vx - p.x * p.vz, p.x * p.vy - p.y * p.vx];
+    const cosang = (L[0] * L0[0] + L[1] * L0[1] + L[2] * L0[2]) / (norm3(...L) * norm3(...L0));
+    worstLdir = Math.max(worstLdir, 1 - cosang);
+  }
+  assert.ok(rmax - rmin < 0.02 * r0, `radius drifted ${rmin}..${rmax}`);
+  assert.ok(worstLdir < 1e-9, `orbital plane wobbled: ${worstLdir}`);
+});
+
+test('3D: Hawking quanta are emitted over the whole sphere at speed c', () => {
+  const sim = new BlackHoleSim({ lifetime: 1e9, emitRate: 400, seed: 11, dim: 3, killRadius: 1e9 });
+  sim.step(2);
+  const n = sim.photons.length;
+  assert.ok(n > 500, `only ${n} quanta`);
+  let sumCos = 0, steep = 0;
+  for (const q of sim.photons) {
+    const r = norm3(q.x, q.y, q.z);
+    assert.ok(r > sim.rs, 'outside horizon');
+    assert.ok(Math.abs(norm3(q.vx, q.vy, q.vz) - sim.c) < 1e-9, 'speed c');
+    sumCos += q.z / r;
+    if (Math.abs(q.z / r) > 0.5) steep++;
+  }
+  assert.ok(Math.abs(sumCos / n) < 0.1, `net up/down bias ${sumCos / n}`);
+  assert.ok(Math.abs(steep / n - 0.5) < 0.08, `fraction within 60 degrees of the axis: ${steep / n}`);
+});
+
+test('3D: dust ring becomes a thick disc but keeps radii and speeds', () => {
+  const flat = new BlackHoleSim({ seed: 5, dim: 2 }); flat.addDustRing(300, 7, 12);
+  const disc = new BlackHoleSim({ seed: 5, dim: 3 }); disc.addDustRing(300, 7, 12);
+  const zmax = Math.max(...disc.dust.map(p => Math.abs(p.z)));
+  assert.ok(zmax > 1.5, `disc too thin: ${zmax}`);
+  for (let i = 0; i < 300; i++) {
+    const a = flat.dust[i], b = disc.dust[i];
+    assert.ok(Math.abs(norm3(a.x, a.y, a.z) - norm3(b.x, b.y, b.z)) < 1e-9, 'radius kept');
+    assert.ok(Math.abs(norm3(a.vx, a.vy, a.vz) - norm3(b.vx, b.vy, b.vz)) < 1e-9, 'speed kept');
+  }
+});
+
+test('setDim flattens and re-inflates a running simulation without changing the mass law', () => {
+  const sim = new BlackHoleSim({ lifetime: 60, emitRate: 40, seed: 8, dim: 3 });
+  sim.addDustRing(120);
+  for (let i = 0; i < 6 * 60; i++) sim.step(1 / 60);
+  assert.ok(sim.photons.some(q => Math.abs(q.z) > 0.5), 'some quanta are off the plane in 3D');
+  sim.setDim(2);
+  assert.ok(sim.dust.every(p => p.z === 0 && p.vz === 0));
+  assert.ok(sim.photons.every(q => q.z === 0 && q.vz === 0));
+  assert.ok(sim.photons.every(q => Math.abs(norm3(q.vx, q.vy, q.vz) - sim.c) < 1e-6), 'photon speed preserved');
+  for (let i = 0; i < 3 * 60; i++) sim.step(1 / 60);
+  assert.ok(sim.photons.every(q => q.z === 0), 'stays planar in 2D');
+  const before = sim.dust.map(p => [norm3(p.x, p.y, p.z), norm3(p.vx, p.vy, p.vz)]);
+  sim.setDim(3);
+  sim.dust.forEach((p, i) => {
+    assert.ok(Math.abs(norm3(p.x, p.y, p.z) - before[i][0]) < 1e-9);
+    assert.ok(Math.abs(norm3(p.vx, p.vy, p.vz) - before[i][1]) < 1e-9);
+  });
+  assert.ok(sim.dust.some(p => Math.abs(p.z) > 0.3), 'dust spread out of the plane');
+  assert.ok(Math.abs(sim.m - sim.massAt(sim.t)) < 1e-6, 'mass law unaffected by the dimension');
+});
+
+test('3D: dust above the pole is swallowed too', () => {
+  const sim = new BlackHoleSim({ lifetime: 1e9, emitRate: 0, dim: 3 });
+  sim.dust.push({ x: 0, y: 0, z: 2.1, vx: 0, vy: 0, vz: 0 });
+  sim.step(0.5);
+  assert.equal(sim.dust.length, 0);
+  assert.equal(sim.swallowed, 1);
+});
+
+test('3D: full default run terminates with an isotropic burst and the message returns', () => {
+  const sim = new BlackHoleSim({ lifetime: 90, emitRate: 40, seed: 5, dim: 3, infoMode: 'holographic' });
+  sim.addDustRing(150);
+  sim.sendMessage(MSG);
+  let n = 0;
+  while (!sim.evaporated && n++ < 20000) sim.step(1 / 60);
+  assert.ok(sim.evaporated);
+  assert.equal(sim.message.recovered, MSG.length);
+  const burst = sim.photons.filter(q => q.T >= 25 && !q.info);
+  assert.ok(burst.length >= 800);
+  assert.ok(burst.some(q => q.vz > 1) && burst.some(q => q.vz < -1), 'burst goes both up and down');
+  assert.ok(Number.isFinite(sim.t));
+});

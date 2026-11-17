@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2D Black Hole Evaporation</title>
+<title>Black Hole Evaporation (2D and 3D)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2710%27 fill=%27%23000%27 stroke=%27%23ff7a3c%27 stroke-width=%273%27/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -65,12 +66,18 @@
   details ol { margin: 8px 0 0; padding-left: 20px; } details li { margin-bottom: 6px; }
   details .warn { color: #e9c98a; }
   .cy { color: #67e3ff; }
+  [hidden] { display: none !important; }
+  .seg { display: flex; border: 1px solid #2a3552; border-radius: 8px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; border-radius: 0; padding: 8px 12px; background: #131a2b; color: #aab3c7; font-weight: 600; }
+  .seg button.on { background: #27498f; color: #fff; }
+  .ctl3d { margin-top: 10px; }
+  .ctl3d .note { margin: 8px 0 0; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="stage">
-    <canvas id="view" width="900" height="900" aria-label="Black hole evaporation simulation"></canvas>
+    <canvas id="view" width="900" height="900" aria-label="Black hole evaporation simulation" style="touch-action:none"></canvas>
 
     <div class="panel info" id="info">
       <h2>The information paradox and Susskind's "World as a Hologram"</h2>
@@ -86,7 +93,7 @@
       <div class="igrid">
         <div>
           <canvas id="screen" width="440" height="440" aria-label="Horizon screen"></canvas>
-          <div class="cap">Horizon screen: one pixel per bit, <span class="cy">cyan</span> = your message.</div>
+          <div class="cap">Horizon screen: one pixel per bit, <span class="cy">cyan</span> = your message. <span id="i-dimnote"></span></div>
         </div>
         <div>
           <canvas id="page" width="440" height="440" aria-label="Entropy curves"></canvas>
@@ -128,8 +135,20 @@
 
   <div class="side">
     <div>
-      <h1>2D Black Hole Evaporation</h1>
-      <p class="sub">A toy model of Hawking radiation: the hole shrinks, heats up and ends in a burst.</p>
+      <h1>Black Hole Evaporation, 2D and 3D</h1>
+      <p class="sub">A toy model of Hawking radiation: the hole shrinks, heats up and ends in a burst. Switch between a flat 2D slice and the full 3D picture.</p>
+    </div>
+
+    <div class="panel">
+      <div class="seg" role="group" aria-label="View mode">
+        <button id="v2d" class="on" aria-pressed="true">2D</button>
+        <button id="v3d" aria-pressed="false">3D</button>
+      </div>
+      <div class="ctl3d" id="ctl3d" hidden>
+        <label class="check"><input id="auto" type="checkbox" checked> Auto-rotate</label>
+        <div class="row"><button id="resetview">Reset view</button></div>
+        <p class="note">Drag the picture to rotate it, scroll to zoom. Quanta now leave in every direction and the dust forms a thick disc.</p>
+      </div>
     </div>
 
     <div class="panel">
